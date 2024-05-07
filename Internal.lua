@@ -251,81 +251,6 @@ function Internal:TriggerEvent(event, ...)
 end
 
 --[[
-	FUNCTION HOOKS
-]]
-
--- Hooks don't trigger if the hooked function errors, so there's no need to
--- check parameters, if those parameters cause errors (which most don't now).
-
-local FILTER_PATTERN = ERR_CHAT_PLAYER_NOT_FOUND_S:format("(.+)")
-local lastFilteredLineID = nil
-
-if not Internal.MessageFilterKeyCache then
-	Internal.MessageFilterKeyCache = {}
-end
-
-local function GenerateMessageFilterKey(target)
-	-- Due to systemic issues across ourselves, LibMSP, TRP, etc. this
-	-- filter has been hacked to only use the character name of the player
-	-- and to discard the realm.
-
-	local filterKey = string.split("-", target, 2)
-
-	if string.utf8lower then
-		filterKey = string.utf8lower(filterKey)
-	else
-		filterKey = string.lower(filterKey)
-	end
-
-	return filterKey
-end
-
-setmetatable(Internal.MessageFilterKeyCache, {
-	__index = function(self, target)
-		local filterKey = GenerateMessageFilterKey(target)
-		self[target] = filterKey
-		return filterKey
-	end,
-})
-
-local function MessageEventFilter_SYSTEM (self, event, text, ...)
-	local name = text:match(FILTER_PATTERN)
-	if not name then
-		return false
-	end
-
-	local filterKey = Internal.MessageFilterKeyCache[name]
-
-	if not Internal.Filter[filterKey] or Internal.Filter[filterKey] < GetTime() then
-		Internal.Filter[filterKey] = nil
-		return false
-	end
-
-	local lineID = select(10, ...)
-
-	if lineID ~= lastFilteredLineID then
-		Internal:TriggerEvent("OnError", name)
-		lastFilteredLineID = lineID
-	end
-
-	return true
-end
-
-local function HookSendAddonMessage(prefix, text, kind, target)
-	if kind == "WHISPER" and target then
-		local filterKey = Internal.MessageFilterKeyCache[target]
-		Internal.Filter[filterKey] = GetTime() + (select(3, GetNetStats()) * 0.001) + 5.000
-	end
-end
-
-local function HookSendAddonMessageLogged(prefix, text, kind, target)
-	if kind == "WHISPER" and target then
-		local filterKey = Internal.MessageFilterKeyCache[target]
-		Internal.Filter[filterKey] = GetTime() + (select(3, GetNetStats()) * 0.001) + 5.000
-	end
-end
-
---[[
 	BATTLE.NET WRAPPER API
 ]]
 
@@ -469,9 +394,6 @@ Internal:SetScript("OnEvent", function(self, event, ...)
 		Internal:UpdateBattleNetAccountData()
 	elseif event == "PLAYER_LOGIN" then
 		_G.__chomp_internal = nil
-		hooksecurefunc(C_ChatInfo, "SendAddonMessage", HookSendAddonMessage)
-		hooksecurefunc(C_ChatInfo, "SendAddonMessageLogged", HookSendAddonMessageLogged)
-		ChatFrame_AddMessageEventFilter("CHAT_MSG_SYSTEM", MessageEventFilter_SYSTEM)
 		self.SameRealm = {}
 		self.SameRealm[(GetRealmName():gsub("[%s%-]", ""))] = true
 		for i, realm in ipairs(GetAutoCompleteRealms()) do
